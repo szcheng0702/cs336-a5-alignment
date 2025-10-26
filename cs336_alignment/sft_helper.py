@@ -49,3 +49,20 @@ def tokenize_prompt_and_output(
     input_ids = batch_input_ids[:, :-1]
     mask = batch_mask[:,:-1]
     return {"input_ids":input_ids,"labels":labels,"response_mask":mask}
+
+def compute_entropy(logits:torch.Tensor)->torch.Tensor:
+    """Get the entropy of the next-token predictions (i.e., entropy over the vocabulary dimension).
+    Args:
+        logits: torch.Tensor Tensor of shape (batch_size, sequence_length, vocab_size)
+        containing unnormalized logits.
+
+    Returns:
+        torch.Tensor Shape (batch_size, sequence_length). The entropy for each next-token
+        prediction.
+    Note: you should use a numerically stable method (e.g., using logsumexp) to avoid overflow.
+    """
+    logz = torch.logsumexp(logits,dim=-1,keepdim=True)
+    log_px = logits - logz
+    px = torch.exp(log_px)
+    # -torch.sum(px*log_px,dim=2) might be numerically unstable
+    return logz - torch.sum(px*logits,dim=-1)
