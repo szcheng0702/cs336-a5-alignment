@@ -12,6 +12,7 @@ from cs336_alignment.sft_helper import (
     compute_entropy,
     get_response_log_probs,
     masked_normalize,
+    sft_microbatch_train_step,
     tokenize_prompt_and_output,
 )
 
@@ -202,7 +203,7 @@ def run_masked_mean(
         torch.Tensor, the mean of the tensor along the specified
             dimension, considering only the elements with mask value 1.
     """
-    return masked_normalize(tensor, mask, dim)
+    return masked_mean(tensor, mask, dim)
 
 
 def run_sft_microbatch_train_step(
@@ -212,7 +213,9 @@ def run_sft_microbatch_train_step(
     normalize_constant: int | None = 1.0,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     """Compute the policy gradient loss and backprop its gradients for a microbatch."""
-    raise NotImplementedError
+    return sft_microbatch_train_step(
+        policy_log_probs, response_mask, gradient_accumulation_steps, normalize_constant
+    )
 
 
 def run_grpo_microbatch_train_step(
@@ -276,7 +279,7 @@ def run_masked_normalize(
         torch.Tensor, the normalized sum, where masked elements
             (mask=0) don't contribute to the sum.
     """
-    raise NotImplementedError
+    return masked_normalize(tensor, mask, dim, normalize_constant)
 
 
 """
