@@ -150,6 +150,23 @@ def sft_microbatch_train_step(
         might want to log.
     """
     loss = (-policy_log_probs*response_mask).sum()/normalize_constant
-    return loss/gradient_accumulation_steps
+    sequence_length = policy_log_probs.shape[-1]
+    metadata = {"microbatch_loss_seq":loss, "microbatch_loss_per_token":loss/sequence_length}
+    return loss/gradient_accumulation_steps, metadata
+
+def log_generations(model: torch.nn.Module,
+    input_ids: torch.Tensor,
+    labels: torch.Tensor,response_mask: torch.Tensor,gradient_accumulation_steps: int,):
+    d = get_response_log_probs(model,input_ids,labels,True)
+    loss, metadata = sft_microbatch_train_step(d["log_probs"],response_mask)
+    d["loss"] = loss
+    print(f"Log probs are: {d["log_probs"]}\n")
+    print(f"token entropy is {d["token_entropy"]}\n")
+    print(f"microbatch_loss_seq:{d["metadata"]["microbatch_loss_seq"]}\n")
+    print(f"microbatch_loss_per_token:{d["metadata"]["microbatch_loss_per_token"]}\n")
+
+
+
+
 
 
