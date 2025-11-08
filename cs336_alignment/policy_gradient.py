@@ -65,3 +65,57 @@ def compute_group_normalized_rewards(
         advantage /= rewards["reward_std"] + advantage_eps
 
     return advantage.flatten(), rewards["reward"].flatten(), rewards
+
+
+def compute_naive_policy_gradient_loss(
+    raw_rewards_or_advantages: torch.Tensor,
+    policy_log_probs: torch.Tensor,
+) -> torch.Tensor:
+    """Compute policy gradient loss using either raw rewards or advantages.
+
+    Args:
+        raw_rewards_or_advantages: torch.Tensor of shape (batch_size, 1):
+            the raw rewards or advantages for each rollout response.
+        policy_log_probs: torch.Tensor of shape (batch_size, sequence_length):
+            the log-probs of the policy.
+
+    Returns:
+        torch.Tensor of shape (batch_size, sequence_length):
+            the policy gradient per-token loss.
+    """
+    return -raw_rewards_or_advantages.unsqueeze(1) * policy_log_probs
+
+
+def compute_grpo_clip_loss(
+    advantages: torch.Tensor,
+    policy_log_probs: torch.Tensor,
+    old_log_probs: torch.Tensor,
+    cliprange: float,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """Compute the GRPO-Clip loss.
+
+    Args:
+        advantages: torch.Tensor of shape (batch_size, 1):
+            the advantages for each rollout response.
+        policy_log_probs: torch.Tensor of shape (batch_size, sequence_length):
+            the log-probs of the policy.
+        old_log_probs: torch.Tensor of shape (batch_size, sequence_length):
+            the log-probs of the old policy.
+        cliprange: float, the clip range for the ratio.
+
+    Returns:
+        tuple[torch.Tensor, dict[str, torch.Tensor]]:
+            torch.Tensor of shape (batch_size, sequence_length):
+                the GRPO-Clip per-token loss.
+            dict[str, torch.Tensor]: metadata for the GRPO-Clip loss
+                (used to compute clip fraction).
+    """
+    probs_ratio = policy_log_probs / old_log_probs
+    l1 = probs_ratio * advantages.unsqueeze(1)
+    metadata = {"naive_loss": -l1, "probs_ratio": probs_ratio}
+    metadata["clipped_probs_ratio"] = torch.clamp(
+        probs_ratio, min=1 - cliprange, max=1 + cliprange
+    )
+    l2 = metadata["clipped_probs_ratio"] * advantages.unsqueeze(1)
+    metadata["clipped_loss"] = -l2
+    return -min(l1, l2), metadata

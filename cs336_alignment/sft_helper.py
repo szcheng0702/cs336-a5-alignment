@@ -160,6 +160,7 @@ def log_generations(model: torch.nn.Module,
     d = get_response_log_probs(model,input_ids,labels,True)
     loss, metadata = sft_microbatch_train_step(d["log_probs"],response_mask)
     d["loss"] = loss
+    d["meta"] = metadata
     print(f"Log probs are: {d["log_probs"]}\n")
     print(f"token entropy is {d["token_entropy"]}\n")
     print(f"microbatch_loss_seq:{d["metadata"]["microbatch_loss_seq"]}\n")
