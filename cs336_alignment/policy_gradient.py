@@ -119,3 +119,36 @@ def compute_grpo_clip_loss(
     l2 = metadata["clipped_probs_ratio"] * advantages.unsqueeze(1)
     metadata["clipped_loss"] = -l2
     return -min(l1, l2), metadata
+
+
+def compute_policy_gradient_loss(
+    policy_log_probs: torch.Tensor,
+    loss_type: str,
+    raw_rewards: torch.Tensor,
+    advantages: torch.Tensor,
+    old_log_probs: torch.Tensor,
+    cliprange: float,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """
+    Wrapper that delegates to the appropriate policy gradient loss function above.
+    """
+    allowed_loss_types = ["no_baseline", "reinforce_with_baseline", "grpo_clip"]
+    if loss_type not in allowed_loss_types:
+        raise ValueError(
+            f"loss_type must be one of the values within {allowed_loss_types}",
+            allowed_loss_types,
+        )
+    if loss_type == "no_baseline":
+        return (
+            compute_naive_policy_gradient_loss(raw_rewards, policy_log_probs),
+            {},
+        )  # empty metadata
+    elif loss_type == "reinforce_with_baseline":
+        return (
+            compute_naive_policy_gradient_loss(advantages, policy_log_probs),
+            {},
+        )  # empty metadata
+    else:  # grp_clip
+        return compute_grpo_clip_loss(
+            advantages, policy_log_probs, old_log_probs, cliprange
+        )
