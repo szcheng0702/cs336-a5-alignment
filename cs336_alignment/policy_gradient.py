@@ -2,6 +2,8 @@ from collections import defaultdict
 from typing import Callable, Literal
 
 import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
 
 
 def compute_group_normalized_rewards(
@@ -220,3 +222,55 @@ def grpo_microbatch_train_step(
         / gradient_accumulation_steps
     )
     return masked_loss_per_accumulation_step, metadata
+
+
+def grpo_train_loop(
+    data_loader: DataLoader,
+    model: nn.Module,
+    reward_fn: Callable,
+    optimizer: torch.optim.Optimizer = torch.optim.AdamW,
+    gradient_accumulation_steps: int = 128,
+    n_grpo_steps: int = 200,
+    learning_rate: float = 1e-5,
+    advantage_eps: float = 1e-6,
+    rollout_batch_size: int = 256,
+    group_size: int = 8,
+    loss_type: Literal[
+        "no_baseline", "reinforce_with_baseline", "grpo_clip"
+    ] = "reinforce_with_baseline",
+    use_std_normalization: bool = True,
+    cliprange: float | None = None,
+):
+    for _ in range(n_grpo_steps):
+        for idx, (inputs, labels) in enumerate(data_loader):
+            # Forward pass.
+            for _ in range(group_size):
+                logits = model(inputs)
+                log_probs = torch.log_softmax(logits, dim=-1, keepdim=True)
+                advantages, raw_rewards, rewards_metadata = (
+                    compute_group_normalized_rewards(
+                        reward_fn,
+                        rollout_responses,
+                        repeated_ground_truths,
+                        group_size,
+                        advantage_eps,
+                        use_std_normalization,
+                    )
+                )
+                loss, metadata = grpo_microbatch_train_step(
+                    log_probs,
+                    response_mask,
+                    gradient_accumulation_steps,
+                    loss_type,
+                    raw_rewards,
+                    advantages,
+                    old_log_probs,
+                    cliprange,
+                )
+            # loss = loss_fn(logits, labels) / gradient_accumulation_steps
+            # # Backward pass.
+            # loss.backward()
+            # if (idx + 1) % gradient_accumulation_steps == 0:
+            #     # Update weights every `gradient_accumulation_steps` batches.
+            #     optimizer.step()
+            #     optimizer.zero_grad()
