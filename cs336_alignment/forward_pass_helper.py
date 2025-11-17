@@ -70,7 +70,7 @@ def get_response_log_probs(
     model: torch.nn.Module,
     input_ids: torch.Tensor,
     labels: torch.Tensor,
-    return_token_entropy: bool)->torch.Tensor:
+    return_token_entropy: bool)->dict[str, torch.Tensor]:
     """Get the conditional log-probs of the response given the prompt,
         and optionally the entropy of the next token predictions.
 
@@ -95,7 +95,8 @@ def get_response_log_probs(
                 or padding; that is done in the train loop.
     """
     logits = model(input_ids).logits
-    log_probs = logits - torch.logsumexp(logits,dim=-1,keepdim=True)
+    # log_probs = logits - torch.logsumexp(logits,dim=-1,keepdim=True)
+    log_probs = torch.log_softmax(logits,dim=-1)
     token_log_probs = torch.gather(log_probs,dim=-1, index = labels).squeeze(-1)
     token_entropy = None
     if return_token_entropy:

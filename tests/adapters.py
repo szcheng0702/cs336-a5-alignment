@@ -8,6 +8,13 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizerBase
 
+from cs336_alignment.forward_pass_helper import (
+    compute_entropy,
+    get_response_log_probs,
+    masked_normalize,
+    sft_microbatch_train_step,
+    tokenize_prompt_and_output,
+)
 from cs336_alignment.policy_gradient import (
     compute_group_normalized_rewards,
     compute_grpo_clip_loss,
@@ -15,13 +22,6 @@ from cs336_alignment.policy_gradient import (
     compute_policy_gradient_loss,
     grpo_microbatch_train_step,
     masked_mean,
-)
-from cs336_alignment.sft_helper import (
-    compute_entropy,
-    get_response_log_probs,
-    masked_normalize,
-    sft_microbatch_train_step,
-    tokenize_prompt_and_output,
 )
 
 
@@ -137,7 +137,9 @@ def run_get_response_log_probs(
                 we have not masked out the token indices corresponding to the prompt
                 or padding; that is done in the train loop.
     """
-    return get_response_log_probs(model, input_ids, labels, return_token_entropy)
+    return get_response_log_probs(model, input_ids, labels, return_token_entropy)[
+        "log_probs"
+    ]
 
 
 def run_compute_naive_policy_gradient_loss(
