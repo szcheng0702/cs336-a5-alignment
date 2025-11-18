@@ -40,16 +40,19 @@ def tokenize_prompt_and_output(
     batch_input_ids = torch.nn.utils.rnn.pad_sequence(
         batch_input_ids, batch_first=True, padding_value=tokenizer.pad_token_id
     )
-    batch_mask = torch.nn.utils.rnn.pad_sequence(batch_mask batch_first=True, padding_value=0)
+    batch_mask = torch.nn.utils.rnn.pad_sequence(
+        batch_mask, batch_first=True, padding_value=0
+    )
 
     # labels
     labels = batch_input_ids[:, 1:]
     # slice off the final token
     input_ids = batch_input_ids[:, :-1]
-    mask = batch_mask[:,:-1]
-    return {"input_ids":input_ids,"labels":labels,"response_mask":mask}
+    mask = batch_mask[:, :-1]
+    return {"input_ids": input_ids, "labels": labels, "response_mask": mask}
 
-def compute_entropy(logits:torch.Tensor)->torch.Tensor:
+
+def compute_entropy(logits: torch.Tensor) -> torch.Tensor:
     """Get the entropy of the next-token predictions (i.e., entropy over the vocabulary dimension).
     Args:
         logits: torch.Tensor Tensor of shape (batch_size, sequence_length, vocab_size)
@@ -60,17 +63,19 @@ def compute_entropy(logits:torch.Tensor)->torch.Tensor:
         prediction.
     Note: you should use a numerically stable method (e.g., using logsumexp) to avoid overflow.
     """
-    logz = torch.logsumexp(logits,dim=-1,keepdim=True)
+    logz = torch.logsumexp(logits, dim=-1, keepdim=True)
     log_px = logits - logz
     px = torch.exp(log_px)
     # -torch.sum(px*log_px,dim=2) might be numerically unstable
-    return logz - torch.sum(px*logits,dim=-1)
+    return logz - torch.sum(px * logits, dim=-1)
+
 
 def get_response_log_probs(
     model: torch.nn.Module,
     input_ids: torch.Tensor,
     labels: torch.Tensor,
-    return_token_entropy: bool)->dict[str, torch.Tensor]:
+    return_token_entropy: bool,
+) -> dict[str, torch.Tensor]:
     """Get the conditional log-probs of the response given the prompt,
         and optionally the entropy of the next token predictions.
 
@@ -96,12 +101,12 @@ def get_response_log_probs(
     """
     logits = model(input_ids).logits
     # log_probs = logits - torch.logsumexp(logits,dim=-1,keepdim=True)
-    log_probs = torch.log_softmax(logits,dim=-1)
-    token_log_probs = torch.gather(log_probs,dim=-1, index = labels).squeeze(-1)
+    log_probs = torch.log_softmax(logits, dim=-1)
+    token_log_probs = torch.gather(log_probs, dim=-1, index=labels).squeeze(-1)
     token_entropy = None
     if return_token_entropy:
         token_entropy = compute_entropy(logits)
-    return {"log_probs":token_log_probs, "token_entropy":token_entropy}
+    return {"log_probs": token_log_probs, "token_entropy": token_entropy}
 
 
 def masked_normalize(
@@ -126,7 +131,8 @@ def masked_normalize(
         torch.Tensor, the normalized sum, where masked elements
             (mask=0) don't contribute to the sum.
     """
-    return torch.sum(tensor*mask,dim=dim)/normalize_constant
+    return torch.sum(tensor * mask, dim=dim) / normalize_constant
+
 
 def sft_microbatch_train_step(
     policy_log_probs: torch.Tensor,
@@ -142,7 +148,7 @@ def sft_microbatch_train_step(
     prompt/padding.
     gradient_accumulation_steps Number of microbatches per optimizer step.
     normalize_constant The constant by which to divide the sum. It is fine to leave this as 1.0.
-    
+
     Returns:
     tuple[torch.Tensor, dict[str, torch.Tensor]].
         loss:scalar tensor. The microbatch loss, adjusted for gradient accumulation. We return
@@ -150,25 +156,27 @@ def sft_microbatch_train_step(
         metadata:Dict with metadata from the underlying loss call, and any other statistics you
         might want to log.
     """
-    loss = (-policy_log_probs*response_mask).sum()/normalize_constant
+    loss = (-policy_log_probs * response_mask).sum() / normalize_constant
     sequence_length = policy_log_probs.shape[-1]
-    metadata = {"microbatch_loss_seq":loss, "microbatch_loss_per_token":loss/sequence_length}
-    return loss/gradient_accumulation_steps, metadata
+    metadata = {
+        "microbatch_loss_seq": loss,
+        "microbatch_loss_per_token": loss / sequence_length,
+    }
+    return loss / gradient_accumulation_steps, metadata
 
-def log_generations(model: torch.nn.Module,
+
+def log_generations(
+    model: torch.nn.Module,
     input_ids: torch.Tensor,
-    labels: torch.Tensor,response_mask: torch.Tensor,gradient_accumulation_steps: int,):
-    d = get_response_log_probs(model,input_ids,labels,True)
-    loss, metadata = sft_microbatch_train_step(d["log_probs"],response_mask)
+    labels: torch.Tensor,
+    response_mask: torch.Tensor,
+    gradient_accumulation_steps: int,
+):
+    d = get_response_log_probs(model, input_ids, labels, True)
+    loss, metadata = sft_microbatch_train_step(d["log_probs"], response_mask)
     d["loss"] = loss
     d["meta"] = metadata
     print(f"Log probs are: {d["log_probs"]}\n")
     print(f"token entropy is {d["token_entropy"]}\n")
     print(f"microbatch_loss_seq:{d["metadata"]["microbatch_loss_seq"]}\n")
     print(f"microbatch_loss_per_token:{d["metadata"]["microbatch_loss_per_token"]}\n")
-
-
-
-
-
-

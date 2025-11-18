@@ -116,7 +116,7 @@ def grpo_train_loop(
             )
 
             tokenizer_output = tokenize_prompt_and_output(
-                inputs, ground_truths, tokenizer
+                inputs, rollout_responses, tokenizer
             )
             # duplicate input_ids, labels, response_mask for group_size times
             batch_input_ids = rearrange(
@@ -133,29 +133,37 @@ def grpo_train_loop(
                     model, batch_input_ids, batch_labels, return_token_entropy=False
                 )
 
+            input_ids_chunks = torch.chunk(
+                batch_input_ids, chunks=n_microbatches_per_rollout_batch, dim=0
+            )
+            labels_chunks = torch.chunk(
+                batch_labels, chunks=n_microbatches_per_rollout_batch, dim=0
+            )
             response_masks_chunks = torch.chunk(
                 batch_response_mask, chunks=n_microbatches_per_rollout_batch, dim=0
             )
             old_log_pbs_chunks = torch.chunk(
-                old_log_pbs_chunks, chunks=n_microbatches_per_rollout_batch, dim=0
-            )
-            log_probs = get_response_log_probs(
-                model, batch_input_ids, batch_labels, return_token_entropy=False
+                old_log_probs_results, chunks=n_microbatches_per_rollout_batch, dim=0
             )
             for epoch in range(epochs_per_rollout_batch):
                 loss_for_curr_rollout = 0
                 optimizer.zero_grad()
                 for mb_idx, (
+                    mb_input_ids,
+                    mb_labels,
                     mb_response_mask,
                     mb_old_log_pbs,
-                    mb_log_pbs,
                 ) in enumerate(
                     zip(
+                        input_ids_chunks,
+                        labels_chunks,
                         response_masks_chunks,
                         old_log_pbs_chunks,
-                        log_probs,
                     )
                 ):
+                    mb_log_pbs = get_response_log_probs(
+                        model, mb_input_ids, mb_labels, return_token_entropy=False
+                    )
                     loss, metadata = grpo_microbatch_train_step(
                         mb_log_pbs,
                         mb_response_mask,
